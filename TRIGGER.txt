@@ -1,0 +1,133 @@
+--1. It was impossible to issue a book, which is no longer in the library (in quantity).
+--1. Kitabxanada olmayan kitabları, kitabxanadan götürmək olmaz.
+
+
+ALTER TRIGGER NonExistingBookCheck
+ON S_Cards
+INSTEAD OF INSERT
+AS
+BEGIN
+DECLARE @counter int
+DECLARE @month int
+SELECT @counter=COUNT(*) FROM S_Cards INNER JOIN INSERTED ON INSERTED.Id_Student=S_Cards.Id_Student WHERE INSERTED.DateIn IS NULL
+SELECT @month= DATEDIFF(MONTH,GETDATE(),INSERTED.DateIn) FROM S_Cards INNER JOIN INSERTED ON INSERTED.Id_Student=S_Cards.Id_Student WHERE INSERTED.DateIn IS NOT NULL
+
+	SET NOCOUNT ON
+	 IF NOT EXISTS (
+        SELECT 1
+        FROM INSERTED 
+        JOIN Books ON INSERTED.Id_Book = Books.Id
+        WHERE Books.Quantity > 0
+    )
+    BEGIN
+		PRINT 'Bu Kitab kitabxanada yoxdur!'
+    END
+	ELSE IF @counter>3 --> 4-cu tapsiriq
+	BEGIN
+		PRINT 'Siz kitab limitini kecdiyiniz ucun kitab goture bilmezsiniz!'
+	END
+	ELSE IF @month>2--5-ci task
+	BEGIN
+		PRINT 'Kitableri uzun muddet saxladiginiz ucun kitab goture bilmezsiniz!'
+	END
+	ELSE
+	BEGIN
+        INSERT INTO S_Cards (Id, Id_student, Id_book, DateOut,Id_Lib)
+        SELECT Id, Id_Student, Id_Book, GETDATE(),Id_Lib FROM INSERTED 
+
+	END
+
+END
+select* from Books
+SELECT * FROM S_Cards INNER JOIN Books ON Books.Id=S_Cards.Id
+INSERT INTO S_Cards (Id,Id_Student, Id_Book,DateOut,Id_Lib)
+VALUES (103, 2, 19,GETDATE(),2)
+
+--2. When you return a certain book, its quantity should increase.
+--2. Müəyyən kitabı qaytardıqda, onun Quantity-si (sayı) artmalıdır.
+
+CREATE TRIGGER returnedBooks
+ON S_Cards
+AFTER UPDATE
+AS
+BEGIN
+	SET NOCOUNT ON
+
+    UPDATE Books
+    SET Quantity += 1
+    FROM INSERTED 
+    JOIN Books  ON INSERTED.Id_Book = Books.Id
+    WHERE INSERTED.DateIn IS NULL
+
+END
+
+select * from S_Cards
+UPDATE S_Cards 
+SET DateIn=GETDATE()--yoxlanis zamani sehven DateIn column-un butun row-larina deyer verdim... sonra hamisini null edtdim
+WHERE Id_Student=10
+select * from S_Cards
+
+--3. When issuing a book, its quantity should decrease.
+--3. Kitab kitabxanadan verildikdə onun sayı azalmalıdır.
+
+CREATE TRIGGER BookCount
+ON S_Cards
+AFTER INSERT
+AS
+BEGIN
+	SET NOCOUNT ON
+
+    UPDATE Books
+    SET Quantity -= 1
+    WHERE Books.Id=(SELECT Id_Book FROM INSERTED)
+END
+
+select * from S_Cards
+select * from Books
+INSERT INTO S_Cards (Id,Id_Lib, Id_student, Id_book, DateOut)
+VALUES (106,2,10,16,GETDATE())
+select * from Books
+
+--4. You can not give more than three books to one student in his arms.
+--4. Bir tələbə artıq 3 itab götütürübsə ona yeni kitab vermək olmaz.
+SELECT * FROM Books
+SELECT * FROM S_Cards
+
+INSERT INTO S_Cards (Id,Id_Student,Id_Book,Id_Lib,DateOut)
+VALUES (109,10,18,1,GETDATE())
+
+--5. You can not issue a new book to a student, if he now read at least one book for more than 2 months.
+--5. Əgər tələbə bir kitabı 2aydan çoxdur oxuyursa, bu halda tələbəyə yeni kitab vermək olmaz.
+
+
+
+--6. When you delete a book, data about it must be copied to the LibDeleted table.
+--6. Kitabı bazadan sildikdə, onun haqqında data LibDeleted cədvəlinə köçürülməlidir.
+
+CREATE TABLE LibDeleted(
+Id int PRIMARY KEY NOT NULL IDENTITY(1,1),
+Id_Book int NOT NULL,
+[Name] nvarchar(MAX) NOT NULL,
+Pages int NOT NULL,
+YearPress int NOT NULL,
+Id_Themes int NOT NULL,
+Id_Category int NOT NULL,
+Id_Author int NOT NULL,
+Id_Press int NOT NULL,
+Comment nvarchar(50) NOT NULL,
+Quantity int NOT NULL,
+DeletedDate DATETIME NOT NULL
+)
+DROP TABLE LibDeleted
+
+CREATE TRIGGER deletingBooks
+ON Books
+AFTER DELETE
+AS
+BEGIN
+ SET NOCOUNT ON
+	INSERT INTO LibDeleted (Id_Book,[Name],Pages,YearPress,Id_Themes,Id_Category,Id_Author,Id_Press,Comment,Quantity,DeletedDate)
+	SELECT Id,[Name],Pages,YearPress,Id_Themes,Id_Category,Id_Author,Id_Press,Comment,Quantity,GETDATE()
+	FROM DELETED
+
+END
